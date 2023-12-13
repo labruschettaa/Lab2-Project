@@ -47,3 +47,7 @@ int fun_pthread_cond_wait(pthread_cond_t *restrict cond, pthread_mutex_t *restri
 int fun_pthread_cond_signal(pthread_cond_t *cond, int line, char *file);
 
 int fun_thread_cond_broadcast(pthread_cond_t *cond, int line, char *file);
+
+int fun_pthread_mutex_init(pthread_mutex_t *restrict mutex, const pthread_mutexattr_t *restrict attr, int line, char *file);
+
+int fun_pthread_mutex_destroy(pthread_mutex_t *mutex, int line, char *file);

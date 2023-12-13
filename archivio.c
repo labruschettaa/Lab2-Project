@@ -3,7 +3,7 @@
 #define HERE __LINE__,__FILE__
 #define PC_buffer_len 10
 #define Num_elem 1000000
-// gcc -g -O -Wall -std=c99 archivio.c -o archivio
+#define Max_sequence_length 2048
 
 void *thread_readers_manager(void *arg);
 void *thread_readers_body(void *arg);
@@ -132,7 +132,7 @@ void *body_writers_manager(void *arg){
     man_writers *str = (man_writers *)arg;
     int length = 0; int size_tokens = 0;
     int prod_index = 0; int i;
-    char** tokens; char* copy = ""; char content[2048] = " ";
+    char** tokens; char* copy = ""; char content[Max_sequence_length] = " ";
     
     int nput_array_copies = 0; int size_array_copies = 10;
     char** array_copies = malloc(size_array_copies*sizeof(char*));
@@ -205,14 +205,12 @@ void *body_writers_manager(void *arg){
 
     // -- ATTENDO LA TERMINAZIONE DEI THREAD SCRITTORI --
     for(i=0;i<*(str->nwriters);i++){
-        //printf("Tutto bene\n");
         fun_thread_join(str->writers[i],NULL,HERE);
     }
 
     free_arrays(array_copies, nput_array_copies);
     free_array_of_arrays(array_tokens,nput_array_tokens);
 
-    //printf("Gli scrittori hanno terminato, esco\n");
     pthread_exit(NULL);
 }
 
@@ -222,7 +220,7 @@ void *body_readers_manager(void *arg){
     // -- DICHIARAZIONE DI VARIABILI --
     man_readers *str = (man_readers *)arg;
     char** tokens; char* copy;
-    int length = 0; char content[2048] = " ";
+    int length = 0; char content[Max_sequence_length] = " ";
     int prod_index = 0, size_tokens = 0, i;
 
     int nput_array_copies = 0; int size_array_copies = 10;
@@ -306,29 +304,29 @@ void *body_readers_manager(void *arg){
     free_arrays(array_copies, nput_array_copies);
     free_array_of_arrays(array_tokens,nput_array_tokens);;
 
-    //printf("Capo lettore: lettori hanno terminato, esco.\n");
     pthread_exit(NULL);
 }
 
 // --------- THREAD SCRITTORI --------- 
 void *thread_writers_body(void *arg){
-    sigset_t set;
-    sigfillset(&set);
-    pthread_sigmask(SIG_BLOCK, &set, NULL);
-    writers *str = (writers *)arg;
+    
+    // -- DICHIARAZIONE DI VARIABILI --
+    writers *struct_w = (writers *)arg;
     char* content = " ";
+
+    // -- COMINCIO LA LETTURA DA BUFFER --
     while(true){
 
-        fun_sem_wait(str->sem_data_items, HERE);
-        fun_thread_mutex_lock(str->buffer_mutex, HERE);
-        content = str->buffer[*(str->index) % PC_buffer_len];
-        *(str->index) += 1;
-        fun_thread_mutex_unlock(str->buffer_mutex, HERE);
-        fun_sem_post(str->sem_free_slots, HERE);
+        fun_sem_wait(struct_w->sem_data_items, HERE);
+        fun_thread_mutex_lock(struct_w->buffer_mutex, HERE);
+        content = struct_w->buffer[*(struct_w->index) % PC_buffer_len];
+        *(struct_w->index) += 1;
+        fun_thread_mutex_unlock(struct_w->buffer_mutex, HERE);
+        fun_sem_post(struct_w->sem_free_slots, HERE);
 
         if(content==NULL) break;
 
-        aggiungi(content, str);
+        aggiungi(content, struct_w);
     }
     pthread_exit(NULL);
 }
@@ -337,27 +335,28 @@ void *thread_writers_body(void *arg){
 void *thread_readers_body(void *arg){
 
     // -- DICHIARAZIONE DI VARIABILI --
-    readers *str = (readers *)arg;
+    readers *struct_r = (readers *)arg;
     char *content; int data;
     
     // -- COMINCIO LA LETTURA DA BUFFER --
     while(true){
 
-        fun_sem_wait(str->sem_data_items, HERE);
-        fun_thread_mutex_lock(str->buffer_mutex, HERE);
-
-        content = str->buffer[*(str->index) % PC_buffer_len];
-        *(str->index) += 1;
-        fun_thread_mutex_unlock(str->buffer_mutex, HERE);
-        fun_sem_post(str->sem_free_slots, HERE);
+        fun_sem_wait(struct_r->sem_data_items, HERE);
+        fun_thread_mutex_lock(struct_r->buffer_mutex, HERE);
+        content = struct_r->buffer[*(struct_r->index) % PC_buffer_len];
+        *(struct_r->index) += 1;
+        fun_thread_mutex_unlock(struct_r->buffer_mutex, HERE);
+        fun_sem_post(struct_r->sem_free_slots, HERE);
 
         if(content==NULL) break; // COMANDO DI TERMINAZIONE
 
-        data = conta(content, str);
+        data = conta(content, struct_r);
         
-        fun_thread_mutex_lock(str->file_mutex, HERE);
-        fprintf(str->lettorilog, "%s %d\n", content, data);
-        fun_thread_mutex_unlock(str->file_mutex, HERE);
+        // -- SCRIVO LA STRINGA LETTA E IL VAL DELLA HASH TABLE
+        //    SUL FILE LETTORI.LOG --
+        fun_thread_mutex_lock(struct_r->file_mutex, HERE);
+        fprintf(struct_r->lettorilog, "%s %d\n", content, data);
+        fun_thread_mutex_unlock(struct_r->file_mutex, HERE);
         
     }
 
@@ -366,54 +365,43 @@ void *thread_readers_body(void *arg){
 
 // --------- THREAD SEGNALI --------- 
 void *thread_signal_manager(void *arg){
-    char* mess;
+
     // -- IMPOSTO I SEGNALI --
-    int e;
     sigset_t mask_to_handle;
-    //sigset_t sig_ignore;
     siginfo_t sinfo;
     sigemptyset(&mask_to_handle);
     sigaddset(&mask_to_handle,SIGTERM);
     sigaddset(&mask_to_handle,SIGINT);
 
     // -- DICHIARAZIONE DI VARIABILI --
-    signals *str = (signals *)arg;
+    int e;
+    signals *struct_sig = (signals *)arg;
     char str_ninserts[] = "Numero di stringe distinte contenute nella hash table: 1000000\n";
     int len_str = strlen(str_ninserts);
 
     // -- GESTIONE DEI SEGNALI --
     while(true){
-        //sigfillset(&sig_ignore);
-        //pthread_sigmask(SIG_BLOCK, &sig_ignore, NULL); //NON IGNORO NESSUN SEGNALE
+
         e = sigwaitinfo(&mask_to_handle,&sinfo); //MI METTO IN ATTESA SOLO DI SIGINT E SIGTERM
         if(e<0) perror("Errore sigwaitinfo");
         switch(sinfo.si_signo) {
-            case 2: // CASO SIGINT
-                // NON IGNORARE ALTRI SEGNALI
-                mess = "Ho ricevuto SIGINT!\n";
-                e = write(1, mess, strlen(mess));
-                modify_my_insert_string(str_ninserts, *(str->ninserts)); 
+            case 2: // -- CASO SIGINT --
+                modify_my_insert_string(str_ninserts, *(struct_sig->ninserts)); 
                 e = write(2,str_ninserts,len_str);
                 break;
             
-            case 15: // CASO SIGTERM
-                //IGNORA ALTRI SEGNALI
-                mess = "Ho ricevuto SIGTERM!\n";
-                e = write(1, mess, strlen(mess));
+            case 15: // -- CASO SIGTERM --
 
-                fun_thread_join(*(str->t_manreader),NULL,HERE);
-                fun_thread_join(*(str->t_manwriter),NULL,HERE);
+                // -- ATTENDO I CAPI --
+                fun_thread_join(*(struct_sig->t_manreader),NULL,HERE);
+                fun_thread_join(*(struct_sig->t_manwriter),NULL,HERE);
 
                 // -- STAMPO SU STDOUT QUANTE STRINGE DISTINTE CONTIENE LA HT --
-                modify_my_insert_string(str_ninserts, *(str->ninserts));
+                modify_my_insert_string(str_ninserts, *(struct_sig->ninserts));
                 e = write(1,str_ninserts,len_str);
 
-                mess = "Thread segnali termina!\n";
-                e = write(1, mess, strlen(mess));
-                // -- DEALLOCO LA MEMORIA --
+                // -- DEALLOCO LA (PARZIALMENTE) LA MEMORIA E TERMINO --
                 hdestroy();
-
-                // -- ATTENDO I CAPI E POI TERMINO --
                 pthread_exit(NULL);
                 break;
             default:
@@ -426,7 +414,8 @@ void *thread_signal_manager(void *arg){
 int main(int argc, char *argv[]){
     if(argc != 3){fun_termina("Scrivi 'archivio w r' dove w sono il numero di thread scrittori e r sono il numero di thread lettori");} //ERRORE
     
-    sigset_t set;
+    // -- IMPOSTO I SEGNALI --
+    sigset_t set;   
     sigfillset(&set);
     pthread_sigmask(SIG_BLOCK, &set, NULL);
 
@@ -437,15 +426,17 @@ int main(int argc, char *argv[]){
     int nreaders = atoi(argv[2]); 
     int ninserts = 0;  int i;
     
-    //-- COND E MUTEX PER LETTORI E SCRITTORI
-    pthread_cond_t cond_hash = PTHREAD_COND_INITIALIZER;
-    pthread_mutex_t hash_mu = PTHREAD_MUTEX_INITIALIZER;
+    //-- COND E MUTEX PER LETTORI E SCRITTORI --
+    pthread_cond_t cond_hash;
+    pthread_mutex_t hash_mu;
+    fun_pthread_mutex_init(&hash_mu,NULL,HERE);
     fun_pthread_cond_init(&cond_hash,NULL,HERE);
     int num_readers = 0; int writing = 0;
 
     // -- DICHIARAZIONE DI VARIABILI CAPO LET --
     char* buffer_readers[PC_buffer_len];
-    pthread_mutex_t mu_readers = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t mu_readers;
+    fun_pthread_mutex_init(&mu_readers,NULL,HERE);
     sem_t sem_free_slots_readers, sem_data_items_readers;
     fun_sem_init(&sem_free_slots_readers,0,PC_buffer_len,HERE);
     fun_sem_init(&sem_data_items_readers,0,0,HERE);
@@ -453,7 +444,8 @@ int main(int argc, char *argv[]){
 
     // -- DICHIARAZIONE DI VARIABILI LETTORI --
     int index_readers = 0;
-    pthread_mutex_t mu_file = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t mu_file;
+    fun_pthread_mutex_init(&mu_file,NULL,HERE);
     pthread_t thread_readers[nreaders]; readers str_readers[nreaders];     
     FILE *lettorilog = fopen("lettori.log","w");
     if(lettorilog==NULL) fun_termina("Errore in apertura di lettori.log");
@@ -487,7 +479,8 @@ int main(int argc, char *argv[]){
     
     // -- DICHIARAZIONE DI VARIABILI CAPO SC --
     char* buffer_writers[PC_buffer_len];
-    pthread_mutex_t mu_writers = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t mu_writers;
+    fun_pthread_mutex_init(&nwriters,NULL,HERE);
     sem_t sem_free_slots_writers, sem_data_items_writers;
     fun_sem_init(&sem_free_slots_writers,0,PC_buffer_len,HERE);
     fun_sem_init(&sem_data_items_writers,0,0,HERE);
@@ -523,7 +516,6 @@ int main(int argc, char *argv[]){
     struct_writer_manager.sem_free_slots = &sem_free_slots_writers;
     fun_thread_create(&thread_writer_manager,NULL,&body_writers_manager,&struct_writer_manager, HERE);
     
-
     // -- DICHIARAZIONE VARIABILI (THREAD SEGNALI) --
     pthread_t thread_signal;
     signals str_signals;
@@ -539,8 +531,10 @@ int main(int argc, char *argv[]){
 
     // DISTRUGGI LA ROBA
     fun_pthread_cond_destroy(&cond_hash,HERE);
+    fun_pthread_mutex_destroy(&mu_file,HERE);
+    fun_pthread_mutex_destroy(&mu_readers,HERE);
+    fun_pthread_mutex_destroy(&mu_writers,HERE);
+    fun_pthread_mutex_destroy(&hash_mu,HERE);
     fclose(lettorilog);
-    char* mess = "Main termina!\n";
-    i = write(1, mess, strlen(mess));
     
 }

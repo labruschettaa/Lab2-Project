@@ -156,3 +156,23 @@ int fun_thread_cond_broadcast(pthread_cond_t *cond, int line, char *file) {
   }
   return e;
 }
+
+int fun_pthread_mutex_init(pthread_mutex_t *restrict mutex, const pthread_mutexattr_t *restrict attr, int line, char *file) {
+  int e = pthread_mutex_init(mutex, attr);
+  if (e!=0) {
+    fun_perror(e, "Errore pthread_mutex_init");
+    fprintf(stderr,"== %d == Linea: %d, File: %s\n",getpid(),line,file);
+    pthread_exit(NULL);
+  }  
+  return e;
+}
+
+int fun_pthread_mutex_destroy(pthread_mutex_t *mutex, int line, char *file) {
+  int e = pthread_mutex_destroy(mutex);
+  if (e!=0) {
+    fun_perror(e, "Errore pthread_mutex_destroy");
+    fprintf(stderr,"== %d == Linea: %d, File: %s\n",getpid(),line,file);
+    pthread_exit(NULL);
+  }
+  return e;
+}

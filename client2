@@ -15,13 +15,15 @@ def body(nomefile):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((HOST,PORT))
             connection_type = 1
-            s.sendall(struct.pack("<i",connection_type)) # Comunica connessione di tipo B
+            # Comunica connessione di tipo B
+            s.sendall(struct.pack("<i",connection_type))
             for line in f:
                 encoded_line = str.encode(line)
                 length_bytes = len(encoded_line)
                 s.sendall(struct.pack("<i",length_bytes))
                 s.sendall(encoded_line)
-            s.sendall(struct.pack("<i",0)) # Comunica che ha terminato
+            # Comunica che ha terminato
+            s.sendall(struct.pack("<i",0))
             s.shutdown(socket.SHUT_RDWR)
 
 
