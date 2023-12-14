@@ -5,13 +5,9 @@
 #define Num_elem 1000000
 #define Max_sequence_length 2048
 
-void *thread_readers_manager(void *arg);
-void *thread_readers_body(void *arg);
-void *thread_writers_body(void *arg);
-
 // --------- STRUCT THREAD --------- 
 typedef struct {
-  int val;    // numero di occorrenze della stringa 
+  int val;  
   ENTRY *next;  
 } pair;
 
