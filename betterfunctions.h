@@ -6,6 +6,7 @@
 #include <string.h>   // funzioni per stringhe
 #include <errno.h>    // richiesto per usare errno
 #include <sys/types.h>
+#include <unistd.h>
 #include <sys/wait.h>
 #include <semaphore.h>
 #include <fcntl.h>           /* For O_* constants */
