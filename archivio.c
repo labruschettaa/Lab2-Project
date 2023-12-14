@@ -480,7 +480,7 @@ int main(int argc, char *argv[]){
     // -- DICHIARAZIONE DI VARIABILI CAPO SC --
     char* buffer_writers[PC_buffer_len];
     pthread_mutex_t mu_writers;
-    fun_pthread_mutex_init(&nwriters,NULL,HERE);
+    fun_pthread_mutex_init(&mu_writers,NULL,HERE);
     sem_t sem_free_slots_writers, sem_data_items_writers;
     fun_sem_init(&sem_free_slots_writers,0,PC_buffer_len,HERE);
     fun_sem_init(&sem_data_items_writers,0,0,HERE);
